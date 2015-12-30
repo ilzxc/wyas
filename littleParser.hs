@@ -2,12 +2,14 @@ import Text.ParserCombinators.Parsec hiding (spaces)
 import System.Environment
 import Control.Monad
 import Numeric
+import Data.Ratio
+import Data.Complex
 
 {--=============================================================================================--
     An Algebraic data type, defining a set of possible values that a variable of type LispVal
     can hold:
     1. An ATOM, which stores a String naming the atom
-    2. A LIST, which stores a list of other LispVals (Haskell lists are denoted by brackets); 
+    2. A LIST, which stores a list of other LispVal (Haskell lists are denoted by brackets); 
        also called a proper list
     3. A DOTTEDLIST, representing the Scheme form (a b . c); also called an improper list. 
        This stores a list of all elelments but the last, and then stores the last element as 
@@ -20,6 +22,9 @@ data LispVal = Atom String
              | List [LispVal]
              | DottedList [LispVal] LispVal
              | Number Integer
+             | Float Double
+             | Ratio Rational
+             | Complex (Complex Double)
              | String String
              | Bool Bool
 
@@ -84,9 +89,35 @@ parseBool = do
 --parseNumber :: Parser LispVal
 --parseNumber = liftM (Number . read) $ many1 digit
 
+parseFloat :: Parser LispVal
+parseFloat = do
+    x <- many1 digit
+    char '.'
+    y <- many1 digit
+    return $ Float (fst . head $ readFloat (x ++ "." ++ y))
+
+parseRatio :: Parser LispVal
+parseRatio = do
+    x <- many1 digit
+    char '/'
+    y <- many1 digit
+    return $ Ratio ((read x) % (read y))
+
+toDouble :: LispVal -> Double
+toDouble(Float f) = realToFrac f
+toDouble(Number n) = fromIntegral n
+
+parseComplex :: Parser LispVal
+parseComplex = do
+    x <- (try parseFloat <|> parseDecimal1)
+    char '+'
+    y <- (try parseFloat <|> parseDecimal1)
+    char 'i'
+    return $ Complex (toDouble x :+ toDouble y)
+
 parseNumber :: Parser LispVal
-parseNumber = parseDecimal1 
-    <|> parseDecimal2 
+parseNumber = parseDecimal1
+    <|> parseDecimal2
     <|> parseOct 
     <|> parseHex 
     <|> parseBin
@@ -143,7 +174,7 @@ parseQuoted = do
 parseExpr :: Parser LispVal
 parseExpr = parseAtom
         <|> parseString
-        <|> parseNumber
+        <|> try parseComplex <|> try parseFloat <|> try parseRatio <|> parseNumber
         <|> parseBool
         <|> parseQuoted
         <|> do 
